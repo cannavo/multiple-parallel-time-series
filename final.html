@@ -1,0 +1,2499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title></title>
+	<script src="https://d3js.org/d3.v5.min.js"></script>
+	<script src="https://d3js.org/d3-interpolate.v1.min.js"></script>
+	<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+	<script>
+		async function load(){
+			const data = await d3.csv('ProcurementsSample.csv');
+			var width = 1250;
+			
+			var emp = {};
+			var max = 0;
+			var total = 1;
+			var maxPrice=0;
+			for (var i=0;i<data.length;i++){
+				if(emp[data[i].Source]==undefined){
+					total++;
+					emp[data[i].Source]=[1,[]];
+				}
+				else {
+					emp[data[i].Source][0]++;
+					if(emp[data[i].Source][0]>max){
+						max = emp[data[i].Source][0];
+					}
+				}
+				if(data[i].eType==2){
+					if(parseInt(data[i].Weight)>maxPrice){
+						maxPrice = parseInt(data[i].Weight);
+					}
+					emp[data[i].Source][1].push([data[i+1].Source,data[i].Time,data[i].Weight,data[i].Target])
+				}
+			}
+			var originalEmp = JSON.parse(JSON.stringify(emp));
+			var peopleEmp = JSON.parse(JSON.stringify(emp));
+			var colorEmp = JSON.parse(JSON.stringify(emp));
+			var timeEmp = JSON.parse(JSON.stringify(emp));
+			var peopleColorEmp = JSON.parse(JSON.stringify(emp));
+			var colorTimeEmp = JSON.parse(JSON.stringify(emp));
+			var peopleTimeEmp = JSON.parse(JSON.stringify(emp));
+			var binTotalNums={};
+			var binPeople={};
+			for(key in emp){
+				if(binTotalNums[emp[key][0]]==undefined){
+					binTotalNums[emp[key][0]]=1;
+					binPeople[emp[key][0]]=[{y:0, text: key, bin: emp[key][0], color: "red", textColor: "black"}];
+				}
+				else{
+					binTotalNums[emp[key][0]]++;
+					binPeople[emp[key][0]].push({y:0, text: key, bin: emp[key][0], color: "red", textColor: "black"});
+				}
+			}
+			binPeople[0]=[];
+			binTotalNums[0]=1;
+			var binSelected = {};
+			var selected = [];
+			var clicked = [];
+			for (var i=0;i<=max;i++) {
+				binSelected[i]=true;
+				selected[i]=null;
+				clicked[i]=null;
+			}
+			var originalPeople =  JSON.parse(JSON.stringify(binPeople));
+			var binNums = JSON.parse(JSON.stringify(binTotalNums));
+			var binTrueNums = JSON.parse(JSON.stringify(binTotalNums));
+			var allSelected = true;
+			var numSelected = total;
+			var trueTotal = total;
+			var svg = d3.select("body")
+				.append("svg")
+				.attr("width", width)
+				.attr("height", 25000)
+				.on("click",function(){svg.selectAll(".selectedRect").remove();});
+			var otherDeleted = false;
+			var parseColor = d3.scaleSequential().domain([1, maxPrice]).interpolator(d3.interpolateViridis);
+			var parseTime = d3.timeFormat("%H:%M:%S");
+			var d = new Date('January 1, 2025 00:00:00');
+			var xScale = d3.scaleTime().range([150,width-250]).domain([new Date(d.getTime()+86400*1000), new Date(d.getTime()+104400*1000)])
+			var xPos = d3.scaleLinear().range([150,width-250]).domain([86400,104400]);
+			var timeX = d3.scaleLinear().domain([150,width-250]).range([86400,104400]);
+			var xAxis = d3.axisBottom(xScale)
+				.tickSize(10)
+				.tickPadding(5)
+				.ticks(d3.timeMinute.every(30))
+				.tickFormat(d3.timeFormat("%H:%M"));
+			svg.append("g").attr("transform","translate(0,30)").call(xAxis);
+			svg.append("text")
+				.attr("x",width/2)
+				.attr("y",17)
+				.text(d3.timeFormat("%B %d, %Y")(new Date(d.getTime()+86400*1000)))
+				.style("font-size",14)
+				.style("text-anchor","middle")
+			var axisClicked=null;
+			svg.append("rect")
+				.attr("x",150)
+				.attr("y",30)
+				.attr("height",10)
+				.attr("width",width-400)
+				.style("stroke","none")
+				.style("fill-opacity",0)
+				.style("cursor","pointer")
+				.on("click",function(){
+					if(!axisClicked){
+						axisClicked = d3.mouse(this)[0];
+						svg.append("line")
+							.attr("id","axisLine")
+							.attr("x1",d3.mouse(this)[0])
+							.attr("x2",d3.mouse(this)[0])
+							.attr("y1",30)
+							.attr("y2",40)
+							.style("stroke","red")
+							.style("stroke-width",2);
+					}
+					else{
+						var bigx;
+						var smallx;
+						var newx=d3.mouse(this)[0];
+						if(newx>axisClicked){
+							bigx=newx;
+							smallx=axisClicked;
+						}
+						else{
+							bigx=axisClicked;
+							smallx=newx;
+						}
+						svg.selectAll(".procLine").filter(function(d){return d.x<smallx||d.x>bigx;}).remove();
+						for(key in emp){
+							emp[key][1]=emp[key][1].filter(function(d){
+								return !(xPos(d[1])>bigx||xPos(d[1])<smallx||((emp[key][0]==0||emp[d[0]][0]==0)&&otherDeleted)||(emp[key][0]==0&&emp[d[0]][0]==0));
+							});
+							peopleTimeEmp[key][1]=peopleTimeEmp[key][1].filter(function(d){
+								return !(xPos(d[1])>bigx||xPos(d[1])<smallx||((peopleTimeEmp[key][0]==0||peopleTimeEmp[d[0]][0]==0)&&otherDeleted)||(peopleTimeEmp[key][0]==0&&peopleTimeEmp[d[0]][0]==0));
+							});
+							timeEmp[key][1]=timeEmp[key][1].filter(function(d){return xPos(d[1])<=bigx&&xPos(d[1])>=smallx});
+							colorTimeEmp[key][1]=colorTimeEmp[key][1].filter(function(d){return xPos(d[1])<=bigx&&xPos(d[1])>=smallx});
+						}
+						var timeL=timeX(smallx);
+						var timeH=timeX(bigx);
+						if(timeH-timeL<600){
+							xAxis.ticks(d3.timeMinute.every(1))
+						}
+						else if(timeH-timeL<3000){
+							xAxis.ticks(d3.timeMinute.every(5))
+						}
+						else if(timeH-timeL<9000){
+							xAxis.ticks(d3.timeMinute.every(15))
+						}
+						xScale.domain([new Date(d.getTime()+timeL*1000), new Date(d.getTime()+timeH*1000)])
+						xPos.domain([timeL,timeH]);
+						timeX.range([timeL,timeH]);
+						svg.selectAll(".procLine")
+							.transition()
+							.duration(500)
+							.delay(.00001)
+							.attr("d",function(d){d.x=xPos(d.t); return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+						d3.select("g")
+							.transition()
+							.duration(500)
+							.delay(.00001)
+							.call(xAxis.scale(xScale))
+						svg.select("#axisLine")
+							.transition()
+							.duration(500)
+							.delay(.00001)
+							.attr("x1",150)
+							.attr("x2",150)
+							.remove();
+						svg.append("line")
+							.attr("x1",d3.mouse(this)[0])
+							.attr("x2",d3.mouse(this)[0])
+							.attr("y1",30)
+							.attr("y2",40)
+							.style("stroke","red")
+							.style("stroke-width",2)
+							.transition()
+							.duration(500)
+							.delay(.00001)
+							.attr("x1",width-250)
+							.attr("x2",width-250)
+							.remove();
+						processColors(true);
+						axisClicked=null;
+					}
+				});
+			function restoreTime(){
+				emp=JSON.parse(JSON.stringify(peopleColorEmp));
+				timeEmp=JSON.parse(JSON.stringify(originalEmp));
+				colorTimeEmp=JSON.parse(JSON.stringify(colorEmp));
+				peopleTimeEmp=JSON.parse(JSON.stringify(peopleEmp));
+				xScale.domain([new Date(d.getTime()+86400000), new Date(d.getTime()+104400000)])
+				xPos.domain([86400,104400]);
+				timeX.range([86400,104400]);
+				d3.select("g")
+					.transition()
+					.duration(500)
+					.delay(.00001)
+					.call(xAxis.scale(xScale).ticks(d3.timeMinute.every(30)))
+				svg.selectAll(".procLine").remove();
+				processColors(true);
+				let procData=[];
+				for(var l=0;l<=max;l++){
+					if(svg.selectAll("#line"+l).size()>1){
+						for(var i=0;i<binPeople[l].length;i++){
+							for(var j=0;j<emp[binPeople[l][i].text][1].length;j++){
+								var oBin=emp[emp[binPeople[l][i].text][1][j][0]][0];
+								var h = svg.selectAll("#line"+oBin);
+								var y2;
+								if(h.size()==1){
+									h.each(function(d){y2=d.y});
+									procData.push({y1: binPeople[l][i].y, y2: y2, x: xPos(emp[binPeople[l][i].text][1][j][1]), source: binPeople[l][i].text, target: emp[binPeople[l][i].text][1][j][0], time: parseTime(new Date(d.getTime()+emp[binPeople[l][i].text][1][j][1]*1000)), weight: emp[binPeople[l][i].text][1][j][2], item: emp[binPeople[l][i].text][1][j][3], t: emp[binPeople[l][i].text][1][j][1]});
+								}
+								else if(h.size()>0){
+									h.filter(function(d){return d.text==emp[binPeople[l][i].text][1][j][0];}).each(function(d){y2=d.y;});
+									procData.push({y1: binPeople[l][i].y, y2: y2, x: xPos(emp[binPeople[l][i].text][1][j][1]), source: binPeople[l][i].text, target: emp[binPeople[l][i].text][1][j][0], time: parseTime(new Date(d.getTime()+emp[binPeople[l][i].text][1][j][1]*1000)), weight: emp[binPeople[l][i].text][1][j][2], item: emp[binPeople[l][i].text][1][j][3], t: emp[binPeople[l][i].text][1][j][1]});
+								}
+							}
+						}
+						for(var i=0;i<=max;i++){
+							if(i!=l){
+								var h = svg.selectAll("#line"+i);
+								if(h.size()==1){
+									for(var j=0;j<binPeople[i].length;j++){
+										for(var k=0;k<emp[binPeople[i][j].text][1].length;k++){
+											if(emp[emp[binPeople[i][j].text][1][k][0]][0]==l){
+												var y1;
+												h.each(function(d){y1=d.y});
+												var y2;
+												svg.selectAll("#line"+l).filter(function(d){return d.text==emp[binPeople[i][j].text][1][k][0];}).each(function(d){y2=d.y;});
+												procData.push({y1: y1, y2: y2, x: xPos(emp[binPeople[i][j].text][1][k][1]), source: binPeople[i][j].text, target: emp[binPeople[i][j].text][1][k][0],time: parseTime(new Date(d.getTime()+emp[binPeople[i][j].text][1][k][1]*1000)), weight: emp[binPeople[i][j].text][1][k][2], item: emp[binPeople[i][j].text][1][k][3], t: emp[binPeople[i][j].text][1][k][1]});
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				svg.selectAll(".procLine").data(procData,function(d){return d.source+" "+d.target;}).enter()
+					.append("path")
+					.attr("class","procLine")
+					.attr("marker-end", function(d){	
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							return marker(parseColor(d.weight));
+						}
+						else{
+							return marker("grey");
+						}
+					})
+					.attr("d",function(d){return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+					.style("fill","none")
+					.style("stroke",function(d){
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							return parseColor(d.weight);
+						}
+						else{
+							return "grey";
+						}
+					})
+					.style("opacity",function(d){
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							return 1;
+						}
+						else{
+							return .15;
+						}
+					})
+					.attr('pointer-events', 'visibleStroke')
+					.on("mouseover", function(d) {
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							svg.append("rect")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+15)
+								.attr("y",d3.mouse(this)[1]-40)
+								.attr("height",80)
+								.attr("width",80)
+								.style("fill","white")
+								.style("stroke","black");
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]-25)
+								.text("Seller: "+d.source)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]-10)
+								.text("Buyer: "+d.target)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]+5)
+								.text("Price: $"+d.weight)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]+20)
+								.text("Item: "+d.item)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]+35)
+								.text("Time: "+d.time)
+								.style("font-size",12);	
+						}
+					})
+					.on("mouseout",function(d){svg.selectAll(".hover").remove();});
+			}
+			svg.append("rect")
+				.attr("x",width-233)
+				.attr("id","restoreTime")
+				.attr("y", 30)
+				.attr("width", 108)
+				.attr("height", 20)
+				.style("stroke","black")
+				.style("fill","red")
+				.style("fill-opacity",0)
+				.style("cursor","pointer")
+				.on("click",function(){
+					d3.select(this)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3)
+					restoreTime();
+				})
+				.on("mouseover",function(){d3.select(this).style("fill-opacity",.3);})
+				.on("mouseout",function(){d3.select(this).style("fill-opacity",0);});
+			svg.append("text")
+				.attr("x",width-179)
+				.attr("y",46)
+				.text("Restore Timeline")
+				.style("font-size",12)
+				.style("text-anchor","middle")
+				.style("cursor","pointer")
+				.on("click",function(){
+					svg.select("#restoreTime")
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3)
+					restoreTime();
+				})
+				.on("mouseover",function(){d3.select("#restoreTime").style("fill-opacity",.3);})
+				.on("mouseout",function(){d3.select("#restoreTime").style("fill-opacity",0);});
+			svg.append("text")
+				.attr("id","selectAllText")
+				.attr("x",15)
+				.attr("y",40)
+				.text("Unselect All")
+				.style("font-size",12);
+			svg.append("rect")
+				.attr("x",width-233)
+				.attr("y",71)
+				.attr("width",228)
+				.attr("height",125)
+				.style("fill","none")
+				.style("stroke","black");
+			svg.append("text")
+				.attr("x",width-119)
+				.attr("y",85)
+				.text("Procurement Price")
+				.style("text-anchor","middle")
+				.style("font-size",12);
+			var bLength;
+			var eLength;
+			svg.append("text")
+				.attr("id","minText")
+				.attr("x",width-231)
+				.attr("y",110)
+				.text("$1")
+				.style("font-size",12)
+				.each(function(d){bLength=this.getComputedTextLength()});
+			svg.append("text")
+				.attr("id","maxText")
+				.attr("x",width-7)
+				.attr("y",110)
+				.text("$"+maxPrice)
+				.style("text-anchor","end")
+				.style("font-size",12)
+				.each(function(d){eLength=this.getComputedTextLength()});
+			var gradient = svg.append('defs')
+				.append('linearGradient')
+				.attr('id', 'gradient')
+				.attr('x1', '0%') 
+				.attr('y1', '0%')
+				.attr('x2', '100%') 
+				.attr('y2', '0%')
+			for(var i=0;i<=100;i++){
+				gradient.append('stop')
+					.attr('offset', i+"%")
+					.attr('stop-color', d3.interpolateViridis(i/100))
+					.attr('stop-opacity', 1);
+			}
+			var getMoney = d3.scaleLinear().domain([width-230+bLength,width-7-eLength]).range([1,maxPrice]);
+			var getPos = d3.scaleLinear().range([width-230+bLength,width-7-eLength]).domain([1,maxPrice]);
+			svg.append("rect")
+				.attr("id","gradientRect")
+				.attr("x",width-230+bLength)
+				.attr("y",92)
+				.attr("width",223-eLength-bLength)
+				.attr("height",30)
+				.style("stroke","black")
+				.style('fill', 'url(#gradient)');
+			svg.append("line")
+				.attr("id","leftSlide")
+				.attr("x1",width-230+bLength)
+				.attr("y1",92)
+				.attr("x2",width-230+bLength)
+				.attr("y2",130)
+				.style("stroke","black")
+				.style("stroke-width",2);
+			svg.append("circle")
+				.attr("id","leftCircle")
+				.attr("cx",width-230+bLength)
+				.attr("cy",135)
+				.attr("r",5)
+				.style("stroke","black")
+				.style("fill","white")
+				.style("cursor","pointer")
+				.call(d3.drag()
+					.on("start", function(d){d3.select(this).style("fill","red");})
+					.on("drag",function(d){
+						if(d3.event.x>=width-230+bLength && d3.event.x<svg.select("#rightText").attr("x")){
+							d3.select(this).attr("cx",d3.event.x)
+							d3.select("#leftSlide").attr("x1",d3.event.x).attr("x2", d3.event.x);
+							d3.select("#leftText").attr("x",d3.event.x).text("$"+Math.round(getMoney(d3.event.x)));
+						}
+					})
+					.on("end",function(d){d3.select(this).style("fill","white");}));
+			svg.append("text")
+				.attr("id","leftText")
+				.attr("x",width-230+bLength)
+				.attr("y",155)
+				.text("$1")
+				.style("text-anchor","middle")
+				.style("font-size",12)
+				.style("cursor","pointer")
+				.on("click",function(d){
+					var len = this.getComputedTextLength();
+					var el = d3.select(this);
+					var p_el = d3.select(this.parentNode);
+					var frm = p_el.append("foreignObject");
+					var inp=frm.attr("x",el.attr("x")-len/2+5)
+						.attr("y",143)
+						.attr("width", 60)
+						.attr("height", 25)
+						.append("xhtml:form")
+						.append("input")
+                        .attr("value", function() {
+                            this.focus();
+                            return el.text().split("$")[1];
+                        })
+                        .attr("style", "width: 55;")
+                        .on("blur", function() {
+                            var txt = inp.node().value;
+							p_el.select("foreignObject").remove()
+							if(isNaN(txt)||parseInt(txt)<parseInt(svg.select("#minText").text().split("$")[1])||parseInt(txt)>=parseInt(svg.select("#rightText").text().split("$")[1])){
+								el.transition()
+									.duration(200)
+									.delay(.000001)
+									.style("fill","red")
+									.transition()
+									.duration(200)
+									.delay(.000001)
+									.style("fill","black");
+							}
+                            else{
+								el.text("$"+txt);
+								let x = getPos(txt);
+								svg.select("#leftSlide")
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("x1",x)
+									.attr("x2",x);
+								el.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("x",x)
+									.text("$"+txt);
+								svg.select("#leftCircle")
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("cx",x);
+							}  
+                        })
+                        .on("keypress", function() {
+                            var e = d3.event;
+                            if (e.keyCode == 13)
+                            {
+                                e.preventDefault();
+                                var txt = inp.node().value;
+                                p_el.select("foreignObject").remove();
+								if(isNaN(txt)||parseInt(txt)<parseInt(svg.select("#minText").text().split("$")[1])||parseInt(txt)>=parseInt(svg.select("#rightText").text().split("$")[1])){
+									el.transition()
+										.duration(200)
+										.delay(.000001)
+										.style("fill","red")
+										.transition()
+										.duration(200)
+										.delay(.000001)
+										.style("fill","black");
+								}
+								else{
+									let x = getPos(txt);
+									svg.select("#leftSlide")
+										.transition()
+										.delay(.00001)
+										.duration(500)
+										.attr("x1",x)
+										.attr("x2",x);
+									el.transition()
+										.delay(.00001)
+										.duration(500)
+										.attr("x",x)
+										.text("$"+txt);
+									svg.select("#leftCircle")
+										.transition()
+										.delay(.00001)
+										.duration(500)
+										.attr("cx",x);
+								}
+                            }
+                        });
+				})
+			svg.append("line")
+				.attr("id","rightSlide")
+				.attr("x1",width-7-eLength)
+				.attr("y1",92)
+				.attr("x2",width-7-eLength)
+				.attr("y2",130)
+				.style("stroke","black")
+				.style("stroke-width",2);
+			svg.append("circle")
+				.attr("id","rightCircle")
+				.attr("cx",width-7-eLength)
+				.attr("cy",135)
+				.attr("r",5)
+				.style("stroke","black")
+				.style("fill","white")
+				.style("cursor","pointer")
+				.call(d3.drag()
+					.on("start", function(d){d3.select(this).style("fill","red");})
+					.on("drag",function(d){
+						if(d3.event.x<=width-7-eLength && d3.event.x>svg.select("#leftText").attr("x")){
+							d3.select(this).attr("cx",d3.event.x)
+							d3.select("#rightSlide").attr("x1",d3.event.x).attr("x2", d3.event.x);
+							d3.select("#rightText").attr("x",d3.event.x).text("$"+Math.round(getMoney(d3.event.x)));
+						}
+					})
+					.on("end",function(d){d3.select(this).style("fill","white");}));
+			svg.append("text")
+				.attr("id","rightText")
+				.attr("x",width-7-eLength)
+				.attr("y",155)
+				.text("$"+maxPrice)
+				.style("text-anchor","middle")
+				.style("font-size",12)
+				.style("cursor","pointer")
+				.on("click",function(d){
+					var len = this.getComputedTextLength();
+					var el = d3.select(this);
+					var p_el = d3.select(this.parentNode);
+					var frm = p_el.append("foreignObject");
+					var inp=frm.attr("x",el.attr("x")-len/2+5)
+						.attr("y",143)
+						.attr("width", 60)
+						.attr("height", 25)
+						.append("xhtml:form")
+						.append("input")
+                        .attr("value", function() {
+                            this.focus();
+                            return el.text().split("$")[1];
+                        })
+                        .attr("style", "width: 55;")
+                        .on("blur", function() {
+                            var txt = inp.node().value;
+							p_el.select("foreignObject").remove()
+							if(isNaN(txt)||parseInt(txt)>parseInt(svg.select("#maxText").text().split("$")[1])||parseInt(txt)<=parseInt(svg.select("#leftText").text().split("$")[1])){
+								el.transition()
+									.duration(200)
+									.delay(.000001)
+									.style("fill","red")
+									.transition()
+									.duration(200)
+									.delay(.000001)
+									.style("fill","black");
+							}
+                            else{
+								let x = getPos(txt);
+								svg.select("#rightSlide")
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("x1",x)
+									.attr("x2",x);
+								el.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("x",x)
+									.text("$"+txt);
+								svg.select("#rightCircle")
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("cx",x);
+							}  
+                        })
+                        .on("keypress", function() {
+                            var e = d3.event;
+                            if (e.keyCode == 13)
+                            {
+                                e.preventDefault();
+                                var txt = inp.node().value;
+                                p_el.select("foreignObject").remove();
+								if(isNaN(txt)||parseInt(txt)<parseInt(svg.select("#minText").text().split("$")[1])||parseInt(txt)>=parseInt(svg.select("#rightText").text().split("$")[1])){
+									el.transition()
+										.duration(200)
+										.delay(.000001)
+										.style("fill","red")
+										.transition()
+										.duration(200)
+										.delay(.000001)
+										.style("fill","black");
+								}
+								else{
+									el.text("$"+txt);
+									let x = getPos(txt);
+									svg.select("#leftSlide")
+										.transition()
+										.delay(.00001)
+										.duration(500)
+										.attr("x1",x)
+										.attr("x2",x);
+									el.transition()
+										.delay(.00001)
+										.duration(500)
+										.attr("x",x)
+										.text("$"+txt);
+									svg.select("#leftCircle")
+										.transition()
+										.delay(.00001)
+										.duration(500)
+										.attr("cx",x);
+								}
+                            }
+                        });
+				});
+			let lsprice=1;
+			let usprice=2136360;
+			function processColors(fromReprocess=false) {
+				let lPrice=parseInt(svg.select("#leftText").text().split("$")[1]);
+				let uPrice=parseInt(svg.select("#rightText").text().split("$")[1]);
+				if(fromReprocess){
+					lPrice=lsprice;
+					uPrice=usprice;
+				}
+				else{
+					lsprice=lPrice;
+					usprice=uPrice;
+				}
+				svg.selectAll(".procLine").filter(function(d){return d.weight<lPrice||d.weight>uPrice;}).remove();
+				let minPrice=2136361
+				let maximPrice=0
+				for(key in emp){
+					emp[key][1]=emp[key][1].filter(function(d){
+							if((parseInt(d[2])>uPrice)||(parseInt(d[2])<lPrice)||((emp[key][0]==0||emp[d[0]][0]==0)&&otherDeleted)||(emp[key][0]==0&&emp[d[0]][0]==0)){
+								return false;
+							}
+							if(parseInt(d[2])<minPrice){
+								minPrice=parseInt(d[2]);
+							}
+							if(parseInt(d[2])>maximPrice){
+								maximPrice=parseInt(d[2]);
+							}
+							return true;
+						})
+					colorEmp[key][1]=colorEmp[key][1].filter(function(d){return (parseInt(d[2])<=uPrice)&&(parseInt(d[2])>=lPrice);});
+					peopleColorEmp[key][1]=peopleColorEmp[key][1].filter(function(d){return !((parseInt(d[2])>uPrice)||(parseInt(d[2])<lPrice)||((peopleColorEmp[key][0]==0||peopleColorEmp[d[0]][0]==0)&&otherDeleted)||(peopleColorEmp[key][0]==0&&peopleColorEmp[d[0]][0]==0));});
+					colorTimeEmp[key][1]=colorTimeEmp[key][1].filter(function(d){return (parseInt(d[2])<=uPrice)&&(parseInt(d[2])>=lPrice);});
+				}
+				if(minPrice==maximPrice){
+					parseColor.domain([minPrice-1,maximPrice+1]);
+				}
+				else{
+					parseColor.domain([minPrice,maximPrice]);
+				}
+				updateSelection();
+				if(minPrice==2136361 && maximPrice ==0){
+					svg.select("#minText").text("").each(function(){bLength=this.getComputedTextLength();});
+					svg.select("#maxText").text("").each(function(){eLength=this.getComputedTextLength();});
+				}
+				else{
+					svg.select("#minText").text("$"+minPrice).each(function(){bLength=this.getComputedTextLength();});
+					svg.select("#maxText").text("$"+maximPrice).each(function(){eLength=this.getComputedTextLength();});
+					getMoney.domain([width-230+bLength,width-7-eLength]).range([minPrice,maximPrice]);
+					getPos.range([width-230+bLength,width-7-eLength]).domain([minPrice,maximPrice]);
+				}
+				svg.select("#gradientRect").attr("x",width-230+bLength).attr("width",223-eLength-bLength);
+				var leftSlide=svg.select("#leftSlide")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x1",width-230+bLength)
+					.attr("x2",width-230+bLength);
+				var leftText=svg.select("#leftText")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x",width-230+bLength)
+					.text("$"+minPrice);
+				var leftCirc = svg.select("#leftCircle")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("cx",width-230+bLength);
+				var rightSlide = svg.select("#rightSlide")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x1",width-7-eLength)
+					.attr("x2",width-7-eLength);
+				var rightText=svg.select("#rightText")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x",width-7-eLength)
+					.text("$"+maximPrice);
+				var rightCirc = svg.select("#rightCircle")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("cx",width-7-eLength);
+				if(minPrice==2136361 && maximPrice ==0){
+					leftSlide.style("visibility","hidden");
+					leftCirc.style("visibility","hidden");;
+					leftText.style("visibility","hidden");;
+					rightSlide.style("visibility","hidden");;
+					rightCirc.style("visibility","hidden");;
+					rightText.style("visibility","hidden");;
+				}
+			}
+			function restoreColors() {
+				emp=JSON.parse(JSON.stringify(peopleTimeEmp));
+				colorEmp=JSON.parse(JSON.stringify(originalEmp));
+				colorTimeEmp=JSON.parse(JSON.stringify(timeEmp));
+				peopleColorEmp=JSON.parse(JSON.stringify(peopleEmp));
+				lsprice=1;
+				usprice=2136360;
+				let minPrice=2136361
+				let maximPrice=0
+				for(key in emp){
+					for (var i=0;i<emp[key][1].length;i++){
+						if(parseInt(emp[key][1][i][2])<minPrice){
+							minPrice=parseInt(emp[key][1][i][2]);
+						}
+						if(parseInt(emp[key][1][i][2])>maximPrice){
+							maximPrice=parseInt(emp[key][1][i][2]);
+						}
+					}
+				}
+				svg.select("#minText").text("$"+minPrice).each(function(){bLength=this.getComputedTextLength();});
+				svg.select("#maxText").text("$"+maximPrice).each(function(){eLength=this.getComputedTextLength();});
+				parseColor.domain([minPrice,maximPrice]);
+				getMoney.domain([width-230+bLength,width-7-eLength]).range([minPrice,maximPrice]);
+				getPos.range([width-230+bLength,width-7-eLength]).domain([minPrice,maximPrice]);
+				svg.select("#gradientRect").attr("x",width-230+bLength).attr("width",223-eLength-bLength);
+				svg.select("#leftSlide")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x1",width-230+bLength)
+					.attr("x2",width-230+bLength)
+					.style("visibility","visible");
+				svg.select("#leftText")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x",width-230+bLength)
+					.text("$"+minPrice)
+					.style("visibility","visible");
+				svg.select("#leftCircle")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("cx",width-230+bLength)
+					.style("visibility","visible");
+				svg.select("#rightSlide")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x1",width-7-eLength)
+					.attr("x2",width-7-eLength)
+					.style("visibility","visible");
+				svg.select("#rightText")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("x",width-7-eLength)
+					.text("$"+maximPrice)
+					.style("visibility","visible");
+				svg.select("#rightCircle")
+					.transition()
+					.delay(.00001)
+					.duration(500)
+					.attr("cx",width-7-eLength)
+					.style("visibility","visible");
+				svg.selectAll(".procLine").remove();
+				let procData=[];
+				for(var l=0;l<=max;l++){
+					if(svg.selectAll("#line"+l).size()>1){
+						for(var i=0;i<binPeople[l].length;i++){
+							for(var j=0;j<emp[binPeople[l][i].text][1].length;j++){
+								var oBin=emp[emp[binPeople[l][i].text][1][j][0]][0];
+								var h = svg.selectAll("#line"+oBin);
+								var y2;
+								if(h.size()==1){
+									h.each(function(d){y2=d.y});
+									procData.push({y1: binPeople[l][i].y, y2: y2, x: xPos(emp[binPeople[l][i].text][1][j][1]), source: binPeople[l][i].text, target: emp[binPeople[l][i].text][1][j][0], time: parseTime(new Date(d.getTime()+emp[binPeople[l][i].text][1][j][1]*1000)), weight: emp[binPeople[l][i].text][1][j][2], item: emp[binPeople[l][i].text][1][j][3], t: emp[binPeople[l][i].text][1][j][1]});
+								}
+								else if(h.size()>0){
+									h.filter(function(d){return d.text==emp[binPeople[l][i].text][1][j][0];}).each(function(d){y2=d.y;});
+									procData.push({y1: binPeople[l][i].y, y2: y2, x: xPos(emp[binPeople[l][i].text][1][j][1]), source: binPeople[l][i].text, target: emp[binPeople[l][i].text][1][j][0], time: parseTime(new Date(d.getTime()+emp[binPeople[l][i].text][1][j][1]*1000)), weight: emp[binPeople[l][i].text][1][j][2], item: emp[binPeople[l][i].text][1][j][3], t: emp[binPeople[l][i].text][1][j][1]});
+								}
+							}
+						}
+						for(var i=0;i<=max;i++){
+							if(i!=l){
+								var h = svg.selectAll("#line"+i);
+								if(h.size()==1){
+									for(var j=0;j<binPeople[i].length;j++){
+										for(var k=0;k<emp[binPeople[i][j].text][1].length;k++){
+											if(emp[emp[binPeople[i][j].text][1][k][0]][0]==l){
+												var y1;
+												h.each(function(d){y1=d.y});
+												var y2;
+												svg.selectAll("#line"+l).filter(function(d){return d.text==emp[binPeople[i][j].text][1][k][0];}).each(function(d){y2=d.y;});
+												procData.push({y1: y1, y2: y2, x: xPos(emp[binPeople[i][j].text][1][k][1]), source: binPeople[i][j].text, target: emp[binPeople[i][j].text][1][k][0],time: parseTime(new Date(d.getTime()+emp[binPeople[i][j].text][1][k][1]*1000)), weight: emp[binPeople[i][j].text][1][k][2], item: emp[binPeople[i][j].text][1][k][3], t: emp[binPeople[i][j].text][1][k][1]});
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				svg.selectAll(".procLine").data(procData,function(d){return d.source+" "+d.target;}).enter()
+					.append("path")
+					.attr("class","procLine")
+					.attr("marker-end", function(d){	
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							return marker(parseColor(d.weight));
+						}
+						else{
+							return marker("grey");
+						}
+					})
+					.attr("d",function(d){return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+					.style("fill","none")
+					.style("stroke",function(d){
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							return parseColor(d.weight);
+						}
+						else{
+							return "grey";
+						}
+					})
+					.style("opacity",function(d){
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							return 1;
+						}
+						else{
+							return .15;
+						}
+					})
+					.attr('pointer-events', 'visibleStroke')
+					.on("mouseover", function(d) {
+						let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+						let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+						let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+						let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+						if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+							svg.append("rect")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+15)
+								.attr("y",d3.mouse(this)[1]-40)
+								.attr("height",80)
+								.attr("width",80)
+								.style("fill","white")
+								.style("stroke","black");
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]-25)
+								.text("Seller: "+d.source)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]-10)
+								.text("Buyer: "+d.target)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]+5)
+								.text("Price: $"+d.weight)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]+20)
+								.text("Item: "+d.item)
+								.style("font-size",12);
+							svg.append("text")
+								.attr("class","hover")
+								.attr("x",d3.mouse(this)[0]+17)
+								.attr("y",d3.mouse(this)[1]+35)
+								.text("Time: "+d.time)
+								.style("font-size",12);	
+						}
+					})
+					.on("mouseout",function(d){svg.selectAll(".hover").remove();});
+			}
+			svg.append("rect")
+				.attr("x",width-229)
+				.attr("id","processColors")
+				.attr("y", 170)
+				.attr("width", 108)
+				.attr("height", 20)
+				.style("stroke","black")
+				.style("fill","red")
+				.style("fill-opacity",0)
+				.style("cursor","pointer")
+				.on("click",function(){
+					d3.select(this)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3);
+					processColors();
+				})
+				.on("mouseover",function(){d3.select(this).style("fill-opacity",.3);})
+				.on("mouseout",function(){d3.select(this).style("fill-opacity",0);});
+			svg.append("text")
+				.attr("x",width-175)
+				.attr("y",186)
+				.text("Process")
+				.style("font-size",12)
+				.style("text-anchor","middle")
+				.style("cursor","pointer")
+				.on("click",function(){
+					svg.select("#processColors")
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3);
+					processColors();
+				})
+				.on("mouseover",function(){d3.select("#processColors").style("fill-opacity",.3);})
+				.on("mouseout",function(){d3.select("#processColors").style("fill-opacity",0);});
+			svg.append("rect")
+				.attr("x",width-117)
+				.attr("id","restoreColors")
+				.attr("y", 170)
+				.attr("width", 108)
+				.attr("height", 20)
+				.style("stroke","black")
+				.style("fill","red")
+				.style("fill-opacity",0)
+				.style("cursor","pointer")
+				.on("click",function(){
+					d3.select(this)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3)
+					restoreColors();
+				})
+				.on("mouseover",function(){d3.select(this).style("fill-opacity",.3);})
+				.on("mouseout",function(){d3.select(this).style("fill-opacity",0);});
+			svg.append("text")
+				.attr("x",width-63)
+				.attr("y",186)
+				.text("Restore")
+				.style("font-size",12)
+				.style("text-anchor","middle")
+				.style("cursor","pointer")
+				.on("click",function(){
+					svg.select("#restoreColors")
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3)
+					restoreColors();
+				})
+				.on("mouseover",function(){d3.select("#restoreColors").style("fill-opacity",.3);})
+				.on("mouseout",function(){d3.select("#restoreColors").style("fill-opacity",0);});
+			function unselectAll() {
+				svg.select("#selectorAll").style("fill","white");
+				svg.selectAll(".selector").style("fill","white");
+				svg.selectAll(".selectorBin").style("fill","white");
+				svg.select("#selectAllText").text("Select All");
+				allSelected=false;
+				numSelected=0;
+				for(var i=0;i<=max;i++){
+					binNums[i]=0;
+					binSelected[i]=false;
+					binPeople[i].forEach(function(d){d.color="white"});
+				}
+				updateSelection();
+			}
+			function selectAll() {
+				svg.select("#selectorAll").style("fill","red");
+				svg.selectAll(".selector").style("fill","red");
+				svg.selectAll(".selectorBin").style("fill","red");
+				svg.select("#selectAllText").text("Unselect All");
+				allSelected=true;
+				numSelected=total;
+				for(var i=0;i<=max;i++){
+					binNums[i]=binTotalNums[i];
+					binSelected[i]=true;
+					binPeople[i].forEach(function(d){d.color="red"});
+				}
+				updateSelection();
+			}
+			svg.append("circle")
+				.attr("r",5)
+				.attr("cx",7)
+				.attr("cy",36)
+				.attr("id","selectorAll")
+				.style("fill","red")
+				.style("stroke","black")
+				.style("cursor","pointer")
+				.on("click",function(){
+					if(this.style.fill=="red"){
+						unselectAll()
+					}
+					else{
+						selectAll()
+					}
+				});
+			function marker(color){
+				svg.append("svg:defs").append("svg:marker")
+					.attr("id", "arrowHead"+color)
+					.attr("refX", 12)
+					.attr("refY", 6)
+					.attr("markerWidth", 30)
+					.attr("markerHeight", 30)
+					.attr("markerUnits","userSpaceOnUse")
+					.attr("orient", "auto")
+					.append("path")
+					.attr("d", "M 0 0 12 6 0 12 3 6")
+					.style("fill", color);
+				return "url(#arrowHead"+color+")";
+			}
+			function updateSelection(){
+				svg.selectAll(".procLine")
+					.filter(function(d){
+						let fill1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target})[0].color;
+						let fill2=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source})[0].color;
+						return (fill1=="red"||fill2=="red");	
+					})
+					.attr("marker-end", function(d){return marker(parseColor(d.weight));})
+					.style("stroke",function(d){return parseColor(d.weight);})
+					.style("opacity",1);
+				svg.selectAll(".procLine")
+					.filter(function(d){
+						let fill1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target})[0].color;
+						let fill2=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source})[0].color;
+						return (fill1!="red"&&fill2!="red")&&(d3.select(this).style("opacity")==1);	
+					})
+					.attr("marker-end", marker("grey"))
+					.style("stroke","grey")
+					.style("opacity",.15);
+			}
+			function draw(){
+				function process(){
+					let ds=[];
+					let dte=[];
+					let dtr=[];
+					let dl=[];
+					svg.selectAll(".selectorBin").each(function(d){ds.push(d)});
+					svg.selectAll(".binText").each(function(d){dte.push(d)});
+					svg.selectAll(".binTriangle").each(function(d){dtr.push(d)});
+					svg.selectAll(".line").each(function(d){dl.push(d)});
+					ds.sort(function(a,b){return a.y-b.y;});
+					dte.sort(function(a,b){return a.y-b.y;});
+					dtr.sort(function(a,b){return a.y-b.y;});
+					dl.sort(function(a,b){return a.y-b.y;});
+					var moveup=0;
+					for(var i=0;i<ds.length;i++){
+						let moveSR=moveup;
+						if(ds[i].bin==0){
+							dtr.splice(i,0,{});
+						}
+						let allBin=svg.selectAll("#selectorBin"+ds[i].bin)
+						let allText=svg.selectAll("#textBin"+ds[i].bin)
+						let allLine=svg.selectAll("#line"+ds[i].bin)
+						let onlyTriangle=svg.select("#triangleBin"+ds[i].bin)
+						svg.select("#selLine"+ds[i].bin).remove();
+						clicked[ds[i].bin]=null;
+						let selRect = svg.select("#rectSelector"+ds[i].bin)
+						let allMark = svg.selectAll("#mark"+ds[i].bin)
+						if(binNums[ds[i].bin]==0){
+							if(ds[i].bin==0){
+								otherDeleted=true;
+							}
+							moveup+=allBin.size()*25;
+							total-=binTotalNums[ds[i].bin];
+							binTotalNums[ds[i].bin]=0;
+							binPeople[0]=binPeople[0].concat(binPeople[ds[i].bin]);
+							binPeople[ds[i].bin]=[];
+							allBin.remove();
+							allText.remove();
+							allLine.remove();
+							onlyTriangle.remove();
+							allMark.remove();
+							selRect.remove();
+						}
+						else{
+							ds[i].y-=moveup;
+							dte[i].y-=moveup;
+							dtr[i].y-=moveup;
+							dl[i].y-=moveup;
+							let di=[];
+							let s=allBin.filter(function(d){return d3.select(this).attr("class")=="selector";}).each(function(d){di.push(d);});
+							di.sort(function(a,b){return a.y-b.y;});
+							for(var j=0;j<di.length;j++){
+								if(di[j].color=="white"){
+									moveup+=25;
+								}
+								else{
+									di[j].y-=moveup;
+								}
+							}
+							s.filter(function(d){return d.color=="white"}).remove();
+							allText.filter(function(d){return d3.select(this).attr("class")=="peopleText"&&d.color=="white"}).remove();
+							allLine.filter(function(d){return d3.select(this).attr("class")=="peopleLine"&&d.color=="white"}).remove();
+							let filteredAllMark = allMark.filter(function(d){return d.color=="white"})
+							let shrink = filteredAllMark.size()*25;
+							filteredAllMark.remove();
+							allBin.transition()
+								.delay(.00001)
+								.duration(500)
+								.attr("cy",function(d){return d.y;});
+							allText.transition()
+								.delay(.00001)
+								.duration(500)
+								.attr("y",function(d){
+									if(d.textColor!=undefined){return d.y+4;}
+									return d.y;
+								});
+							allLine.transition()
+								.delay(.00001)
+								.duration(500)
+								.attr("y1",function(d){return d.y;})
+								.attr("y2",function(d){return d.y;});
+							allMark.transition()
+								.delay(.00001)
+								.duration(500)
+								.attr("cy",function(d){return d.y;});
+							onlyTriangle.transition()
+								.delay(.00001)
+								.duration(500)
+								.attr("transform", function(d) {return "translate(105," + d.y + ")rotate("+d.rotate+")"; })
+							selRect.transition()
+								.delay(.00001)
+								.duration(500)
+								.attr("y", function(d) {return parseInt(d3.select(this).attr("y"))-moveSR;})
+								.attr("height",function(d){return parseInt(d3.select(this).attr("height"))-shrink;});
+							if(ds[i].bin!=0){
+								binPeople[0]=binPeople[0].concat(binPeople[ds[i].bin].filter(function(d){return d["color"]!="red";}));									
+								binPeople[ds[i].bin]=binPeople[ds[i].bin].filter(function(d){return d["color"]=="red";});
+							}
+							total-=(binTotalNums[ds[i].bin]-binNums[ds[i].bin]);
+							binTotalNums[ds[i].bin]=binNums[ds[i].bin];
+							binSelected[ds[i].bin]=true;
+						}
+					}
+					svg.selectAll(".selectorBin").style("fill","red");
+					svg.select("#selectorAll").style("fill","red");
+					svg.select("#selectAllText").text("Unselect All");
+					allSelected = true;
+					for (key in emp){
+						if(binPeople[emp[key][0]].filter(function(dat){return dat.text==key;}).length==0){
+								emp[key][0]=0;
+								peopleEmp[key][0]=0;
+								peopleColorEmp[key][0]=0;
+								peopleTimeEmp[key][0]=0;
+						}
+					}
+					binPeople[0].forEach(function(d){d.color="red";});
+					svg.selectAll(".procLine")
+						.filter(function(d){
+							return (emp[d.source][0]==0&&emp[d.target][0]==0)||(emp[d.source][0]==0&&svg.selectAll("#selectorBin"+emp[d.target][0]).size()==1)||(emp[d.target][0]==0&&svg.selectAll("#selectorBin"+emp[d.source][0]).size()==1)||((emp[d.source][0]==0||emp[d.target][0]==0)&&otherDeleted);
+						}).remove();
+					svg.selectAll(".procLine")
+						.attr("d",function(d){
+							let sou=svg.selectAll("#line"+emp[d.source][0]);
+							if(sou.size()==1){
+								sou.each(function(dat){d.y1=dat.y;});
+							}
+							else{
+								sou.each(function(dat){if (dat.text==d.source){d.y1=dat.y;}});
+							}
+							let tar=svg.selectAll("#line"+emp[d.target][0]);
+							if(tar.size()==1){
+								tar.each(function(dat){d.y2=dat.y;});
+							}
+							else{
+								tar.each(function(dat){if (dat.text==d.target){d.y2=dat.y;}});
+							}
+							return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);
+						})
+					svg.select("#reprocess")
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3)
+					processColors(true);
+				}
+				function restore(){
+					total=trueTotal;
+					numSelected=total;
+					allSelected=true;
+					binTotalNums= JSON.parse(JSON.stringify(binTrueNums));
+					binNums = JSON.parse(JSON.stringify(binTrueNums));
+					for(var i=0;i<=max;i++){
+						binSelected[i]=true;
+						selected[i]=null;
+						clicked[i]=null;
+					}
+					binPeople = JSON.parse(JSON.stringify(originalPeople));
+					emp = JSON.parse(JSON.stringify(colorTimeEmp));
+					peopleEmp = JSON.parse(JSON.stringify(originalEmp));
+					peopleColorEmp = JSON.parse(JSON.stringify(colorEmp));
+					peopleTimeEmp = JSON.parse(JSON.stringify(timeEmp));
+					svg.select("#restore").remove();
+					svg.select("#reprocess").remove();
+					svg.selectAll(".selectorBin").remove();
+					svg.selectAll(".binText").remove();
+					svg.selectAll(".binTriangle").remove();
+					svg.selectAll(".selector").remove();
+					svg.selectAll(".peopleText").remove();
+					svg.selectAll(".line").remove();
+					svg.selectAll(".peopleLine").remove();
+					svg.selectAll(".procLine").remove();
+					svg.selectAll(".buttonText").remove();
+					svg.selectAll(".mark").remove();
+					svg.selectAll(".rectSelector").remove();
+					svg.selectAll(".selLine").remove();
+					draw();
+					processColors(true);
+					svg.select("#restore")
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",1)
+						.transition()
+						.delay(.00001)
+						.duration(200)
+						.style("fill-opacity",.3)
+				}
+				svg.append("text")
+					.attr("x",51)
+					.attr("y",17)
+					.text("Process")
+					.attr("class","buttonText")
+					.style("cursor", "pointer")
+					.style("text-anchor","middle")
+					.style("font-size",12)
+					.on("mouseover",function(){d3.select("#reprocess").style("fill-opacity",.3);})
+					.on("mouseout",function(){d3.select("#reprocess").style("fill-opacity",.0);})
+					//.on("click", function(){process()});
+				svg.append("rect")
+					.attr("id", "reprocess")
+					.attr("x",1)
+					.attr("y",1)
+					.attr("height", 20)
+					.attr("width", 100)
+					.style("stroke", "black")
+					.style("fill", "red")
+					.style("fill-opacity",0)
+					.style("cursor", "pointer")
+					.on("mouseover",function(){d3.select(this).style("fill-opacity",.3);})
+					.on("mouseout",function(){d3.select(this).style("fill-opacity",.0);})
+					.on("click", function(){process()});
+				svg.append("text")
+					.attr("x",160)
+					.attr("y",17)
+					.attr("class","buttonText")
+					.text("Restore")
+					.style("cursor", "pointer")
+					.style("text-anchor","middle")
+					.style("font-size",12)
+					.on("mouseover",function(){d3.select("#restore").style("fill-opacity",.3);})
+					.on("mouseout",function(){d3.select("#restore").style("fill-opacity",.0);})
+					.on("click", function(){restore();});
+				svg.append("rect")
+					.attr("id","restore")
+					.attr("x",110)
+					.attr("y",1)
+					.attr("height", 20)
+					.attr("width", 100)
+					.style("stroke", "black")
+					.style("fill", "red")
+					.style("fill-opacity",0)
+					.style("cursor", "pointer")
+					.on("mouseover",function(){d3.select(this).style("fill-opacity",.3);})
+					.on("mouseout",function(){d3.select(this).style("fill-opacity",.0);})
+					.on("click", function(){restore();});
+				binCircles = [];
+				binText = [];
+				binTriangles = [];
+				lines = [];
+				for(var i = 0; i<max+1; i++){
+					if(i==max){
+						binCircles.push({y: 74+25*i, id: "selectorBin"+(max-i), bin: max-i});
+						binText.push({y:78+25*i, text: "Other People", bin: max-i, id: "textBin"+(max-i)});
+						lines.push({y:74+25*i, id:"line"+(max-i), bin: max-i});
+					}
+					else{
+						binCircles.push({y: 74+25*i, id: "selectorBin"+(max-i), bin: max-i});
+						binText.push({y:78+25*i, text: (max-i)+" Procurement(s)", bin: max-i, id: "textBin"+(max-i)});
+						binTriangles.push({y:74+25*i, bin: max-i, rotate: "-90", id: "triangleBin"+(max-i)});
+						lines.push({y:74+25*i, id:"line"+(max-i), bin: max-i});
+					}
+				}
+				function selectBin(bin){
+					binPeople[bin].forEach(function(d){d.color="red"});
+					svg.selectAll("#selectorBin"+bin).style("fill","red");
+					numSelected += (binTotalNums[bin]-binNums[bin]);
+					binNums[bin]=binTotalNums[bin];
+					binSelected[bin]=true;
+					if(numSelected==total){
+						svg.select("#selectorAll").style("fill","red");
+						svg.select("#selectAllText").text("Unselect All");
+						allSelected = true;
+					}
+					updateSelection();
+				}
+				function unselectBin(bin){
+					binPeople[bin].forEach(function(d){d.color="white"});
+					svg.selectAll("#selectorBin"+bin).style("fill","white");
+					numSelected -= binTotalNums[bin];
+					binNums[bin]=0;
+					binSelected[bin]=false;
+					if(allSelected){
+						svg.select("#selectorAll").style("fill","white");
+						svg.select("#selectAllText").text("Select All");
+						allSelected = false;
+					}
+					updateSelection();
+				}
+				svg.selectAll(".selectorBin").data(binCircles).enter()
+					.append("circle")
+					.attr("id",function(d){return d.id;})
+					.attr("class","selectorBin")
+					.attr("r",5)
+					.attr("cx",7)
+					.attr("cy",function(d){return d.y;})
+					.style("fill","red")
+					.style("stroke","black")
+					.style("cursor","pointer")
+					.on("click",function(d){
+						if(this.style.fill=="red"){
+							unselectBin(d.bin)
+						}
+						else{
+							selectBin(d.bin)
+						}
+					});
+				svg.selectAll(".binText").data(binText).enter()
+					.append("text")
+					.attr("id",function(d){return d.id;})
+					.attr("class","binText")
+					.attr("x",15)
+					.attr("y",function(d){return d.y;})
+					.text(function(d){return d.text;})
+					.style("cursor","pointer")
+					.style("font-size",12)
+					.on("click",function(d){
+						if(!selected[0]){
+							var t = d3.select(this);
+							t.style("fill","red");
+							selected[0]=[d.bin, t];
+						}
+						else{
+							var t = d3.select(this);
+							let inSourceProcLine = svg.selectAll(".procLine")
+								.filter(function(dat){
+									return (emp[dat.source][0]!=d.bin&&emp[dat.source][0]!=selected[0][0])&&((t.attr("y") > dat.y1 && dat.y1 > selected[0][1].attr("y"))||(t.attr("y") < dat.y1 && dat.y1 < selected[0][1].attr("y")));
+								});
+							let inTargetProcLine = svg.selectAll(".procLine")
+								.filter(function(dat){
+									return (emp[dat.target][0]!=d.bin&&emp[dat.target][0]!=selected[0][0])&&((t.attr("y") > dat.y2 && dat.y2 > selected[0][1].attr("y"))||(t.attr("y") < dat.y2 && dat.y2 < selected[0][1].attr("y")));
+								});
+							let inPeopleText = svg.selectAll(".peopleText")
+								.filter(function(dat){
+									return (dat.bin!=d.bin&&dat.bin!=selected[0][0])&&((t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y")));
+								});
+							let inSelector = svg.selectAll(".selector")
+								.filter(function(dat){
+									return (dat.bin!=d.bin&&dat.bin!=selected[0][0])&&((t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y")));
+								});
+							let inLine = svg.selectAll(".line")
+								.filter(function(dat){
+									return (dat.bin!=d.bin&&dat.bin!=selected[0][0])&&((t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y")));
+								});
+							let inPeopleLine = svg.selectAll(".peopleLine")
+								.filter(function(dat){
+									return (dat.bin!=d.bin&&dat.bin!=selected[0][0])&&((t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y")));
+								});
+							let inSelectorBin = svg.selectAll(".selectorBin")
+								.filter(function(dat){
+									return (dat.bin!=d.bin&&dat.bin!=selected[0][0])&&((t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y")));
+								});
+							let inTriangle = svg.selectAll(".binTriangle")
+								.filter(function(dat){
+									return (dat.bin!=d.bin&&dat.bin!=selected[0][0])&&((t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y")));
+								});
+							let inBinText = svg.selectAll(".binText")
+								.filter(function(dat){
+									return (t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y"));
+								});
+							let inSelRect = svg.selectAll(".rectSelector")
+								.filter(function(dat){
+									let yv=parseInt(d3.select(this).attr("y"));
+									return ((t.attr("y")>yv && yv-15 > selected[0][1].attr("y"))||(t.attr("y") < yv-15 && yv < selected[0][1].attr("y")));
+								})
+							let inSelLine = svg.selectAll(".selLine")
+								.filter(function(dat){
+									let yv=parseInt(d3.select(this).attr("y1"));
+									return (dat!=d.bin&&dat!=selected[0][0])&&((t.attr("y") > yv && yv > selected[0][1].attr("y"))||(t.attr("y") < yv && yv < selected[0][1].attr("y")));
+								})
+							let inMarks = svg.selectAll(".mark")
+								.filter(function(dat){
+									return (dat.bin!=d.bin&&dat.bin!=selected[0][0])&&((t.attr("y") > dat.y && dat.y > selected[0][1].attr("y"))||(t.attr("y") < dat.y && dat.y < selected[0][1].attr("y")));
+								})
+							let iSize = inPeopleText.size()*25+inBinText.size()*25;
+							let currentBinSize = svg.selectAll("#textBin"+d.bin).size()*25;
+							let previousBinSize = svg.selectAll("#textBin"+selected[0][0]).size()*25;
+							if(parseInt(t.attr("y"))<parseInt(selected[0][1].attr("y"))){
+								svg.selectAll("#selectorBin"+selected[0][0])	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y-=iSize+currentBinSize; return dat.y;})
+								svg.selectAll("#textBin"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){
+										if(d3.select(this).attr("class")=="peopleText"){
+											return dat.y+4;
+										}
+										else{
+											dat.y-=iSize+currentBinSize; 
+											return dat.y;
+										}
+									});
+								svg.selectAll("#line"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){
+										if(d3.select(this).attr("class")=="peopleLine"){
+											return dat.y;
+										}
+										else{
+											dat.y-=iSize+currentBinSize; 
+											return dat.y;
+										}
+									})
+									.attr("y2",function(dat){return dat.y;});
+								svg.selectAll("#mark"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){return dat.y;})
+								svg.selectAll("#triangleBin"+selected[0][0])	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("transform",function(dat){dat.y-=iSize+currentBinSize; return "translate(105," + dat.y + ")rotate("+dat.rotate+")";});
+								svg.select("#selLine"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){clicked[dat]-=iSize+currentBinSize; return clicked[dat];})
+									.attr("y2",function(dat){return clicked[dat];});
+								svg.select("#rectSelector"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return parseInt(d3.select(this).attr("y"))-iSize-currentBinSize;});
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.target][0]==selected[0][0]})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y2-=iSize+currentBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.source][0]==selected[0][0]})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y1-=iSize+currentBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								svg.selectAll("#selectorBin"+d.bin)	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y+=iSize+previousBinSize; return dat.y;})
+								svg.selectAll("#textBin"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){
+										if(d3.select(this).attr("class")=="peopleText"){
+											return dat.y+4;
+										}
+										else{
+											dat.y+=iSize+previousBinSize; 
+											return dat.y;
+										}
+									});
+								svg.selectAll("#line"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){
+										if(d3.select(this).attr("class")=="peopleLine"){
+											return dat.y;
+										}
+										else{
+											dat.y+=iSize+previousBinSize; 
+											return dat.y;
+										}
+									})
+									.attr("y2",function(dat){return dat.y;});
+								svg.selectAll("#mark"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){return dat.y;})
+								svg.selectAll("#triangleBin"+d.bin)	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("transform",function(dat){dat.y+=iSize+previousBinSize; return "translate(105," + dat.y + ")rotate("+dat.rotate+")";});
+								svg.select("#selLine"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){clicked[dat]+=iSize+previousBinSize; return clicked[dat];})
+									.attr("y2",function(dat){return clicked[dat];});
+								svg.select("#rectSelector"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return parseInt(d3.select(this).attr("y"))+iSize+previousBinSize;});
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.target][0]==d.bin})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y2+=iSize+previousBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.source][0]==d.bin})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y1+=iSize+previousBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								inSourceProcLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y1-=(currentBinSize-previousBinSize); return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								inTargetProcLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y2-=(currentBinSize-previousBinSize); return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								inSelector
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y-=(currentBinSize-previousBinSize); return dat.y;});
+								inSelLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){return parseInt(d3.select(this).attr("y1"))-(currentBinSize-previousBinSize)})
+									.attr("y2",function(dat){return parseInt(d3.select(this).attr("y2"))-(currentBinSize-previousBinSize)});								
+								inSelRect
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return parseInt(d3.select(this).attr("y"))-(currentBinSize-previousBinSize)});
+								inMarks
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){return dat.y;});
+								inPeopleText
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return dat.y+4;});
+								inPeopleLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){return dat.y;})
+									.attr("y2",function(dat){return dat.y;});
+								inBinText
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){dat.y-=(currentBinSize-previousBinSize); return dat.y;});
+								inLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){dat.y-=(currentBinSize-previousBinSize); return dat.y;})
+									.attr("y2",function(dat){return dat.y;});
+								inSelectorBin
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y-=(currentBinSize-previousBinSize); return dat.y;});
+								inTriangle
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("transform",function(dat){dat.y-=(currentBinSize-previousBinSize); return "translate(105," + dat.y + ")rotate("+dat.rotate+")";});							
+							}
+							else if(parseInt(t.attr("y"))>parseInt(selected[0][1].attr("y"))){
+								svg.selectAll("#selectorBin"+selected[0][0])	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y+=iSize+currentBinSize; return dat.y;})
+								svg.selectAll("#textBin"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){
+										if(d3.select(this).attr("class")=="peopleText"){
+											return dat.y+4;
+										}
+										else{
+											dat.y+=iSize+currentBinSize; 
+											return dat.y;
+										}
+									});
+								svg.selectAll("#line"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){
+										if(d3.select(this).attr("class")=="peopleLine"){
+											return dat.y;
+										}
+										else{
+											dat.y+=iSize+currentBinSize; 
+											return dat.y;
+										}
+									})
+									.attr("y2",function(dat){return dat.y;});
+								svg.selectAll("#mark"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){return dat.y;})
+								svg.selectAll("#triangleBin"+selected[0][0])	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("transform",function(dat){dat.y+=iSize+currentBinSize; return "translate(105," + dat.y + ")rotate("+dat.rotate+")";});
+								svg.select("#selLine"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){clicked[dat]+=iSize+currentBinSize; return clicked[dat];})
+									.attr("y2",function(dat){return clicked[dat];});
+								svg.select("#rectSelector"+selected[0][0])
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return parseInt(d3.select(this).attr("y"))+iSize+currentBinSize;});
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.target][0]==selected[0][0]})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y2+=iSize+currentBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.source][0]==selected[0][0]})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y1+=iSize+currentBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								svg.selectAll("#selectorBin"+d.bin)	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y-=iSize+previousBinSize; return dat.y;})
+								svg.selectAll("#textBin"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){
+										if(d3.select(this).attr("class")=="peopleText"){
+											return dat.y+4;
+										}
+										else{
+											dat.y-=iSize+previousBinSize; 
+											return dat.y;
+										}
+									});
+								svg.selectAll("#line"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){
+										if(d3.select(this).attr("class")=="peopleLine"){
+											return dat.y;
+										}
+										else{
+											dat.y-=iSize+previousBinSize; 
+											return dat.y;
+										}
+									})
+									.attr("y2",function(dat){return dat.y;});
+								svg.selectAll("#mark"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){return dat.y;})
+								svg.selectAll("#triangleBin"+d.bin)	
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("transform",function(dat){dat.y-=iSize+previousBinSize; return "translate(105," + dat.y + ")rotate("+dat.rotate+")";});
+								svg.select("#selLine"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){clicked[dat]-=iSize+previousBinSize; return clicked[dat];})
+									.attr("y2",function(dat){return clicked[dat];});
+								svg.select("#rectSelector"+d.bin)
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return parseInt(d3.select(this).attr("y"))-iSize-previousBinSize;});
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.target][0]==d.bin})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y2-=iSize+previousBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								svg.selectAll(".procLine").filter(function(dat){return emp[dat.source][0]==d.bin})
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y1-=iSize+previousBinSize; return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								inSourceProcLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y1+=(currentBinSize-previousBinSize); return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								inTargetProcLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("d",function(dat){dat.y2+=(currentBinSize-previousBinSize); return d3.line().curve(d3.curveNatural)([[dat.x,dat.y1],[dat.x+10,(parseInt(dat.y1)+parseInt(dat.y2))/2],[dat.x,dat.y2]]);})
+								inSelector
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y+=(currentBinSize-previousBinSize); return dat.y;});
+								inSelLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){return parseInt(d3.select(this).attr("y1"))+(currentBinSize-previousBinSize)})
+									.attr("y2",function(dat){return parseInt(d3.select(this).attr("y2"))+(currentBinSize-previousBinSize)});								
+								inSelRect
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return parseInt(d3.select(this).attr("y"))+(currentBinSize-previousBinSize)});
+								inMarks
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){return dat.y;});
+								inPeopleText
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){return dat.y+4;})
+								inLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){dat.y+=(currentBinSize-previousBinSize); return dat.y;})
+									.attr("y2",function(dat){return dat.y;});
+								inPeopleLine
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y1",function(dat){return dat.y;})
+									.attr("y2",function(dat){return dat.y;});
+								inBinText
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("y",function(dat){dat.y+=(currentBinSize-previousBinSize); return dat.y;})
+								inSelectorBin
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y+=(currentBinSize-previousBinSize); return dat.y;});
+								inTriangle
+									.transition()
+									.delay(.0001)
+									.duration(500)
+									.attr("transform",function(dat){dat.y+=(currentBinSize-previousBinSize); return "translate(105," + dat.y + ")rotate("+dat.rotate+")";});
+							}
+							selected[0][1].style("fill","black");
+							selected[0]=null;
+						}
+					});
+				function select(bin) {
+					numSelected++;
+					binNums[bin]++;
+					if(binNums[bin]==binTotalNums[bin]){
+						svg.selectAll("#selectorBin"+bin).filter(function(d){return d3.select(this).attr("class")!="selector";}).style("fill","red");
+						binSelected[bin]=true;
+					}
+					if(numSelected==total){
+						svg.select("#selectorAll").style("fill","red");
+						svg.select("#selectAllText").text("Unselect All");
+						allSelected = true;
+					}
+					updateSelection();
+				}
+				function unselect(bin) {
+					numSelected --;
+					binNums[bin]--;
+					if(binSelected[bin]){
+						svg.selectAll("#selectorBin"+bin).filter(function(d){return d3.select(this).attr("class")!="selector";}).style("fill","white");
+						binSelected[bin] = false;
+					}
+					if(allSelected){
+						svg.select("#selectorAll").style("fill","white");
+						svg.select("#selectAllText").text("Select All");
+						allSelected = false;
+					}
+					updateSelection();
+				}
+				function moveDown(y, bin) {
+					svg.selectAll(".binText").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y",function(d){d.y+=25*binTotalNums[bin]; return d.y;});
+					svg.selectAll(".binTriangle").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("transform",function(d){d.y+=25*binTotalNums[bin]; return "translate(105," + d.y + ")rotate("+d.rotate+")";});
+					svg.selectAll(".selectorBin").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("cy",function(d){d.y+=25*binTotalNums[bin]; return d.y;});
+					svg.selectAll(".line").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y1",function(d){d.y+=25*binTotalNums[bin]; return d.y;})
+						.attr("y2",function(d){return d.y;});
+					svg.selectAll(".procLine").filter(function(d){return d.y1>y&&d.y2>y})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y1+=25*binTotalNums[bin];d.y2+=25*binTotalNums[bin]; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".procLine").filter(function(d){return d.y1>y&&d.y2<=y})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y1+=25*binTotalNums[bin]; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".procLine").filter(function(d){return d.y1<=y&&d.y2>y})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y2+=25*binTotalNums[bin]; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".rectSelector").filter(function(d){return parseInt(d3.select(this).attr("y"))>y;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y",function(d){return parseInt(d3.select(this).attr("y"))+25*binTotalNums[bin];});
+					svg.selectAll(".selLine").filter(function(d){return parseInt(d3.select(this).attr("y1"))>y;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y1",function(d){return parseInt(d3.select(this).attr("y1"))+25*binTotalNums[bin];})
+						.attr("y2",function(d){return parseInt(d3.select(this).attr("y2"))+25*binTotalNums[bin];})
+					svg.selectAll(".selector").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("cy",function(d){d.y+=25*binTotalNums[bin]; return d.y;});
+					svg.selectAll(".mark").filter(function(d){return d.y>y;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("cy",function(d){return d.y;})
+					svg.selectAll(".peopleLine").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y1",function(d){return d.y;})
+						.attr("y2",function(d){return d.y;});
+					svg.selectAll(".peopleText").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y",function(d){return d.y+4;});
+					svg.select("#line"+bin).style("visibility","hidden");
+					svg.selectAll("#no").data(binPeople[bin]).enter()
+						.append("circle")
+						.attr("id","selectorBin"+bin)
+						.attr("class","selector")
+						.attr("r",5)
+						.attr("cx",30)
+						.attr("cy",function(d,i){d.y=y+25*(i+1); return d.y;})
+						.style("fill",function(d){return d.color;})
+						.style("stroke","black")
+						.style("cursor","pointer")
+						.style("visibility","hidden")
+						.on("click",function(d){
+							if(this.style.fill=="red"){
+								d.color = "white"
+								this.style.fill="white";
+								unselect(d.bin)
+							}
+							else{
+								d.color = "red"
+								this.style.fill="red";
+								select(d.bin)
+							}
+						})
+						.transition()
+						.delay(500)
+						.duration(1)
+						.style("visibility","visible");
+					svg.selectAll("#no").data(binPeople[bin]).enter()
+						.append("circle")
+						.attr("id","mark"+bin)
+						.attr("class","mark")
+						.attr("r",1.5)
+						.attr("cx",7)
+						.attr("cy",function(d){return d.y;})
+						.style("fill","red")
+						.style("visibility","hidden")
+						.transition()
+						.delay(500)
+						.duration(1)
+						.style("visibility","visible");
+					svg.selectAll("#no").data(binPeople[bin]).enter()
+						.append("line")
+						.attr("id","line"+bin)
+						.attr("class","peopleLine")
+						.attr("x1",80)
+						.attr("y1",function(d){return d.y;})
+						.attr("y2",function(d){return d.y;})
+						.attr("x2",width-250)
+						.attr("stroke-width", .7)
+						.attr("stroke", "black")
+						.style("visibility","hidden")
+						.transition()
+						.delay(500)
+						.duration(1)
+						.style("visibility","visible");
+					svg.selectAll("#no").data(binPeople[bin]).enter()
+						.append("text")
+						.attr("id",function(d){return "textBin"+d.bin;})
+						.attr("class","peopleText")
+						.attr("x",38)
+						.attr("y",function(d){return d.y+4;})
+						.text(function(d){return d.text;})
+						.style("font-size",12)
+						.style("visibility","hidden")
+						.style("cursor", "pointer")
+						.style("fill", function(d){return d.textColor;})
+						.on("click",function(d){
+							if(!selected[d.bin]){
+								var t = d3.select(this);
+								t.style("fill",function(dat){dat.textColor="red";return "red"});
+								selected[d.bin]=d.text;
+							}
+							else{
+								var t = d3.select(this);
+								var prev = svg.selectAll("#textBin"+d.bin).filter(function(dat){return dat.text==selected[d.bin];});
+								t.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("y",function(dat){dat.y=prev.attr("y");return dat.y;});
+								prev.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("y",function(dat){dat.y=t.attr("y");return dat.y;});
+								svg.selectAll("#selectorBin"+d.bin).filter(function(dat){return dat.text==d.text;})
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y=prev.attr("y")-4;return dat.y;});
+								svg.selectAll("#line"+d.bin).filter(function(dat){return dat.text==d.text;})
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("y1",function(dat){dat.y=prev.attr("y")-4;return dat.y;})
+									.attr("y2",function(dat){return dat.y});
+								svg.selectAll("#selectorBin"+d.bin).filter(function(dat){return dat.text==selected[d.bin];})
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("cy",function(dat){dat.y=t.attr("y")-4;return dat.y;});
+								svg.selectAll("#line"+d.bin).filter(function(dat){return dat.text==selected[d.bin];})
+									.transition()
+									.delay(.00001)
+									.duration(500)
+									.attr("y1",function(dat){dat.y=t.attr("y")-4;return dat.y;})
+									.attr("y2",function(dat){return dat.y});
+								svg.selectAll(".procLine").filter(function(dat){return dat.source==d.text})
+									.transition()
+									.delay(.000001)
+									.duration(500)
+									.attr("d",function(d){d.y1=prev.attr("y")-4; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+								svg.selectAll(".procLine").filter(function(dat){return dat.target==d.text})
+									.transition()
+									.delay(.000001)
+									.duration(500)
+									.attr("d",function(d){d.y2=prev.attr("y")-4; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+								svg.selectAll(".procLine").filter(function(dat){return dat.source==selected[d.bin]})
+									.transition()
+									.delay(.000001)
+									.duration(500)
+									.attr("d",function(d){d.y1=t.attr("y")-4; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+								svg.selectAll(".procLine").filter(function(dat){return dat.target==selected[d.bin]})
+									.transition()
+									.delay(.000001)
+									.duration(500)
+									.attr("d",function(d){d.y2=t.attr("y")-4; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+								prev.style("fill",function(dat){dat.textColor="black";return "black";});
+								selected[d.bin]=null;
+							}
+						})
+						.transition()
+						.delay(500)
+						.duration(1)
+						.style("visibility","visible");
+					svg.append("rect")
+						.attr("id","rectSelector"+bin)
+						.attr("class","rectSelector")
+						.attr("x",1)
+						.attr("y",y+10)
+						.attr("height",25*binTotalNums[bin]+5)
+						.attr("width",12)
+						.attr("stroke","black")
+						.attr("fill","red")
+						.style("fill-opacity",0)
+						.style("cursor","pointer")
+						.on("click",function(d){
+							if(!clicked[bin]){
+								clicked[bin]=d3.mouse(this)[1];
+								let sbin=[bin];
+								svg.selectAll("#no").data(sbin).enter()
+									.append("line")
+									.attr("id","selLine"+bin)
+									.attr("class","selLine")
+									.attr("x1",1)
+									.attr("x2",13)
+									.attr("y1",clicked[bin])
+									.attr("y2",clicked[bin])
+									.style("stroke","red")
+									.style("stroke-width",1)
+							}
+							else{
+								d3.event.stopPropagation();
+								svg.select("#selLine"+bin).remove();
+								let bigY=0;
+								let smallY=0;
+								let thisY=d3.mouse(this)[1];
+								if(thisY>clicked[bin]){
+									bigY=thisY;
+									smallY=clicked[bin];
+								}
+								else{
+									bigY=clicked[bin];
+									smallY=thisY;
+								}
+								svg.append("rect")
+									.attr("class","selectedRect")
+									.attr("x",1)
+									.attr("y",smallY)
+									.attr("height",bigY-smallY)
+									.attr("width",12)
+									.attr("fill","red")
+									.style("fill-opacity",.3)
+								let whites=0;
+								let selects = svg.selectAll("#selectorBin"+bin)
+									.filter(function(dat){
+										if(smallY<=dat.y&&dat.y<=bigY){
+											if(dat.color=="white"){
+												whites++;
+											}
+											return true;
+										}
+										return false;
+									});
+								if(whites==0){
+									selects.style("fill",function(dat){dat.color="white";return "white";});
+									numSelected -= selects.size();
+									binNums[bin]-= selects.size();
+									if(binSelected[bin]){
+										svg.selectAll("#selectorBin"+bin).filter(function(d){return d3.select(this).attr("class")!="selector";}).style("fill","white");
+										binSelected[bin] = false;
+									}
+									if(allSelected){
+										svg.select("#selectorAll").style("fill","white");
+										svg.select("#selectAllText").text("Select All");
+										allSelected = false;
+									}
+									updateSelection();
+								}
+								else{
+									selects.style("fill",function(dat){dat.color="red";return "red";});
+									numSelected += whites;
+									binNums[bin]+= whites;
+									if(binNums[bin]==binTotalNums[bin]){
+										svg.selectAll("#selectorBin"+bin).filter(function(d){return d3.select(this).attr("class")!="selector";}).style("fill","red");
+										binSelected[bin]=true;
+									}
+									if(numSelected==total){
+										svg.select("#selectorAll").style("fill","red");
+										svg.select("#selectAllText").text("Unselect All");
+										allSelected = true;
+									}
+									updateSelection();
+								}
+								clicked[bin]=null;
+							}
+						})
+						.style("visibility","hidden")
+						.transition()
+						.delay(500)
+						.duration(1)
+						.style("visibility","visible");
+					let procData=[];
+					for(var i=0;i<binPeople[bin].length;i++){
+						for(var j=0;j<emp[binPeople[bin][i].text][1].length;j++){
+							var oBin=emp[emp[binPeople[bin][i].text][1][j][0]][0];
+							var l = svg.selectAll("#line"+oBin);
+							var y2;
+							if(l.size()==1){
+								l.each(function(d){y2=d.y});
+								procData.push({y1: binPeople[bin][i].y, y2: y2, x: xPos(emp[binPeople[bin][i].text][1][j][1]), source: binPeople[bin][i].text, target: emp[binPeople[bin][i].text][1][j][0], time: parseTime(new Date(d.getTime()+emp[binPeople[bin][i].text][1][j][1]*1000)), weight: emp[binPeople[bin][i].text][1][j][2], item: emp[binPeople[bin][i].text][1][j][3], t: emp[binPeople[bin][i].text][1][j][1]});
+							}
+							if(oBin==bin){
+								l.filter(function(d){return d.text==emp[binPeople[bin][i].text][1][j][0];}).each(function(d){y2=d.y;});
+								procData.push({y1: binPeople[bin][i].y, y2: y2, x: xPos(emp[binPeople[bin][i].text][1][j][1]), source: binPeople[bin][i].text, target: emp[binPeople[bin][i].text][1][j][0], time: parseTime(new Date(d.getTime()+emp[binPeople[bin][i].text][1][j][1]*1000)), weight: emp[binPeople[bin][i].text][1][j][2], item: emp[binPeople[bin][i].text][1][j][3], t: emp[binPeople[bin][i].text][1][j][1]});
+							}
+						}
+					}
+					for(var i=0;i<=max;i++){
+						if(i!=bin){
+							var l = svg.selectAll("#line"+i);
+							if(l.size()==1){
+								for(var j=0;j<binPeople[i].length;j++){
+									for(var k=0;k<emp[binPeople[i][j].text][1].length;k++){
+										if(emp[emp[binPeople[i][j].text][1][k][0]][0]==bin){
+											var y1;
+											l.each(function(d){y1=d.y});
+											var y2;
+											svg.selectAll("#line"+bin).filter(function(d){return d.text==emp[binPeople[i][j].text][1][k][0];}).each(function(d){y2=d.y;});
+											procData.push({y1: y1, y2: y2, x: xPos(emp[binPeople[i][j].text][1][k][1]), source: binPeople[i][j].text, target: emp[binPeople[i][j].text][1][k][0],time: parseTime(new Date(d.getTime()+emp[binPeople[i][j].text][1][k][1]*1000)), weight: emp[binPeople[i][j].text][1][k][2], item: emp[binPeople[i][j].text][1][k][3], t: emp[binPeople[i][j].text][1][k][1]});
+										}
+									}
+								}
+							}
+						}
+					}
+					svg.selectAll(".procLine").filter(function(d){return d.y1==y;})
+						.transition()
+						.delay(.0000001)
+						.duration(500)
+						.attr("d",function(d){d.y1=binPeople[bin].filter(function(dat){return dat.text==d.source;})[0].y; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".procLine").filter(function(d){return d.y2==y;})
+						.transition()
+						.delay(.0000001)
+						.duration(500)
+						.attr("d",function(d){d.y2=binPeople[bin].filter(function(dat){return dat.text==d.target;})[0].y; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".procLine").data(procData,function(d){return d.source+" "+d.target;}).enter()
+						.append("path")
+						.attr("class","procLine")
+						.attr("marker-end", function(d){
+							let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+							let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+							let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+							let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+							if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+								return marker(parseColor(d.weight));
+							}
+							else{
+								return marker("grey");
+							}
+						})
+						.attr("d",function(d){return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);})
+						.style("fill","none")
+						.style("stroke",function(d){
+							let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+							let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+							let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+							let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+							if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+								return parseColor(d.weight);
+							}
+							else{
+								return "grey";
+							}
+						})
+						.style("opacity",function(d){
+							let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+							let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+							let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+							let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+							if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+								return 1;
+							}
+							else{
+								return .15;
+							}
+						})
+						.style("visibility","hidden")
+						.attr('pointer-events', 'visibleStroke')
+						.on("mouseover", function(d) {
+							let active1=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.source;})
+							let active2=binPeople[emp[d.target][0]].filter(function(dat){return dat.text==d.target;})
+							let active3=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.source;})
+							let active4=binPeople[emp[d.source][0]].filter(function(dat){return dat.text==d.target;})
+							if((active1.length==1 && active1[0].color=="red")||(active2.length==1 && active2[0].color=="red")||(active3.length==1 && active3[0].color=="red")||(active4.length==1 && active4[0].color=="red")){
+								svg.append("rect")
+									.attr("class","hover")
+									.attr("x",d3.mouse(this)[0]+15)
+									.attr("y",d3.mouse(this)[1]-40)
+									.attr("height",80)
+									.attr("width",80)
+									.style("fill","white")
+									.style("stroke","black");
+								svg.append("text")
+									.attr("class","hover")
+									.attr("x",d3.mouse(this)[0]+17)
+									.attr("y",d3.mouse(this)[1]-25)
+									.text("Seller: "+d.source)
+									.style("font-size",12);
+								svg.append("text")
+									.attr("class","hover")
+									.attr("x",d3.mouse(this)[0]+17)
+									.attr("y",d3.mouse(this)[1]-10)
+									.text("Buyer: "+d.target)
+									.style("font-size",12);
+								svg.append("text")
+									.attr("class","hover")
+									.attr("x",d3.mouse(this)[0]+17)
+									.attr("y",d3.mouse(this)[1]+5)
+									.text("Price: $"+d.weight)
+									.style("font-size",12);
+								svg.append("text")
+									.attr("class","hover")
+									.attr("x",d3.mouse(this)[0]+17)
+									.attr("y",d3.mouse(this)[1]+20)
+									.text("Item: "+d.item)
+									.style("font-size",12);
+								svg.append("text")
+									.attr("class","hover")
+									.attr("x",d3.mouse(this)[0]+17)
+									.attr("y",d3.mouse(this)[1]+35)
+									.text("Time: "+d.time)
+									.style("font-size",12);	
+							}
+						})
+						.on("mouseout",function(d){svg.selectAll(".hover").remove();})
+						.transition()
+						.delay(500)
+						.duration(1)
+						.style("visibility","visible");	
+				}
+				function moveUp(y, bin) {
+					svg.selectAll(".procLine").filter(function(d){
+							return (bin==emp[d.source][0]&&svg.selectAll("#line"+emp[d.target][0]).size()==1)||(bin==emp[d.target][0]&&svg.selectAll("#line"+emp[d.source][0]).size()==1)||(bin==emp[d.target][0]&&bin==emp[d.source][0]);
+						}).remove();
+					svg.select("#line"+bin).style("visibility","visible");
+					svg.selectAll("#line"+bin).filter(function(d){return d3.select(this).attr("class")=="peopleLine";}).remove();
+					svg.selectAll("#selectorBin"+bin).filter(function(d){return d3.select(this).attr("class")=="selector";}).remove();
+					svg.selectAll("#textBin"+bin).filter(function(d){return d3.select(this).attr("class")=="peopleText"}).remove();
+					svg.selectAll("#mark"+bin).remove();
+					svg.select("#rectSelector"+bin).remove();
+					svg.select("#selLine"+bin).remove();
+					clicked[bin]=null;
+					svg.selectAll(".procLine").filter(function(d){return emp[d.source][0]==bin;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y1=y; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".procLine").filter(function(d){return emp[d.target][0]==bin;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y2=y; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".binText").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y",function(d){d.y-=25*binTotalNums[bin]; return d.y;});
+					svg.selectAll(".binTriangle").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("transform",function(d){d.y-=25*binTotalNums[bin]; return  "translate(105," + d.y + ")rotate("+d.rotate+")";});
+					svg.selectAll(".line").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y1",function(d){d.y-=25*binTotalNums[bin]; return d.y;})
+						.attr("y2",function(d){return d.y;});
+					svg.selectAll(".selectorBin").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("cy",function(d){d.y-=25*binTotalNums[bin]; return d.y;});
+					svg.selectAll(".procLine").filter(function(d){return d.y1>y&&d.y2>y})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y1-=25*binTotalNums[bin];d.y2-=25*binTotalNums[bin]; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".procLine").filter(function(d){return d.y1>y&&d.y2<=y})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y1-=25*binTotalNums[bin]; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".procLine").filter(function(d){return d.y1<=y&&d.y2>y})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("d",function(d){d.y2-=25*binTotalNums[bin]; return d3.line().curve(d3.curveNatural)([[d.x,d.y1],[d.x+10,(parseInt(d.y1)+parseInt(d.y2))/2],[d.x,d.y2]]);});
+					svg.selectAll(".rectSelector").filter(function(d){return parseInt(d3.select(this).attr("y"))>y;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y",function(d){return parseInt(d3.select(this).attr("y"))-25*binTotalNums[bin];});
+					svg.selectAll(".selLine").filter(function(d){return parseInt(d3.select(this).attr("y1"))>y;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y1",function(d){return parseInt(d3.select(this).attr("y1"))-25*binTotalNums[bin];})
+						.attr("y2",function(d){return parseInt(d3.select(this).attr("y2"))-25*binTotalNums[bin];})
+					svg.selectAll(".selector").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("cy",function(d){d.y-=25*binTotalNums[bin]; return d.y;});
+					svg.selectAll(".mark").filter(function(d){return d.y>y;})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("cy",function(d){return d.y;});
+					svg.selectAll(".peopleLine").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y1",function(d){return d.y;})
+						.attr("y2",function(d){return d.y;});
+					svg.selectAll(".peopleText").filter(function(d){return (d.y>y&&d.bin!=bin);})
+						.transition()
+						.delay(.000001)
+						.duration(500)
+						.attr("y",function(d){return d.y+4;});
+				}
+				svg.selectAll(".binTriangle").data(binTriangles).enter()
+					.append('path')
+					.attr("id",function(d){return d.id;})
+					.attr("class","binTriangle")
+					.attr("d", d3.symbol().type(d3.symbolTriangle).size(25))
+					.attr("transform", function(d) {return "translate(105," + d.y + ")rotate("+d.rotate+")"; })
+					.style("stroke", "black")
+					.style("fill", "white")
+					.style("cursor", "pointer")
+					.on("click",function(d){
+						if(this.style.fill=="white" || this.style.fill=="rgb(255, 255, 255)"){
+							d.rotate="180";
+							d3.select(this)
+								.transition()
+								.delay(.000001)
+								.duration(500)
+								.attr("transform", "translate(105," + d.y + ")rotate("+d.rotate+")")
+								.style("fill","black");
+							moveDown(d.y, d.bin);
+						}
+						else {
+							d.rotate="-90";
+							d3.select(this)
+								.transition()
+								.delay(.000001)
+								.duration(500)
+								.attr("transform", "translate(105," + d.y + ")rotate("+d.rotate+")")
+								.style("fill","white");
+							moveUp(d.y, d.bin);
+						}
+					});
+				svg.selectAll(".line").data(lines).enter()
+					.append("line")
+					.attr("id",function(d){return d.id;})
+					.attr("class","line")
+					.attr("x1",125)
+					.attr("y1",function(d){return d.y;})
+					.attr("x2",width-250)
+					.attr("y2",function(d){return d.y;})
+					.attr("stroke-width", 1)
+                    .attr("stroke", "black");
+			}
+			draw();
+		}	
+	</script>
+	</head>
+	<body onLoad="load()">
+	</body>
+</html>
